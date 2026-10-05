@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Warehouse",
+    "displayName": "dw_ovg_internal",
+    "description": ""
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "34ba7523-b692-a5cb-4272-911ff540adf4"
+  }
+}
