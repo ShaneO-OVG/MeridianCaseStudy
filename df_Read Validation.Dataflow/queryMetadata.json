@@ -1,0 +1,49 @@
+{
+  "formatVersion": "202502",
+  "computeEngineSettings": {
+    "allowModernEvaluationEngine": true
+  },
+  "name": "df_Read Validation",
+  "queryGroups": [],
+  "documentLocale": "en-US",
+  "queriesMetadata": {
+    "pRunId": {
+      "queryId": "732cccf0-e672-4d47-b1a2-c52c31e112d2",
+      "queryName": "pRunId",
+      "loadEnabled": false
+    },
+    "pSourceModel": {
+      "queryId": "82036e3d-f9f4-457c-9d15-47c71c0d65e9",
+      "queryName": "pSourceModel",
+      "loadEnabled": false
+    },
+    "Validation": {
+      "queryId": "cca65fbe-6604-40a6-b6c5-5551a008a05d",
+      "queryName": "Validation"
+    },
+    "Validation_DataDestination": {
+      "queryId": "b697075f-788d-41f4-b570-cbe338c843fa",
+      "queryName": "Validation_DataDestination",
+      "isHidden": true,
+      "loadEnabled": false
+    }
+  },
+  "connections": [
+    {
+      "path": "https://openvalegroup-my.sharepoint.com/:x:/p/shane_oneill/IQATWqsNFEGxQ7jqjnWy6BEvAZwNxAggojYDe1EK9NZqLVM",
+      "kind": "Web",
+      "connectionId": "{\"ClusterId\":\"a226aba7-cf9e-4d5d-8e2e-bc39443b550f\",\"DatasourceId\":\"bddbdffa-3461-4231-9897-b4ef6e075b21\"}"
+    },
+    {
+      "path": "https://openvalegroup-my.sharepoint.com/personal/shane_oneill_openvalegroup_com/",
+      "kind": "Web",
+      "connectionId": "{\"ClusterId\":\"a226aba7-cf9e-4d5d-8e2e-bc39443b550f\",\"DatasourceId\":\"aecd2ed9-591b-4664-8852-0cfb7259c5a1\"}"
+    },
+    {
+      "path": "Warehouse",
+      "kind": "Warehouse",
+      "connectionId": "{\"ClusterId\":\"a226aba7-cf9e-4d5d-8e2e-bc39443b550f\",\"DatasourceId\":\"867ccc40-66d2-4da6-b609-00806dcdc63b\"}"
+    }
+  ],
+  "parametric": true
+}

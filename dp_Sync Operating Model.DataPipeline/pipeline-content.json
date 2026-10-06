@@ -1,0 +1,755 @@
+{
+  "properties": {
+    "description": "Operating Model forecast load: resolve -> validate -> clear -> load -> conform -> publish -> notify. Strict sequential chain.",
+    "activities": [
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": "SELECT TRIM(ScenarioName) AS ScenarioName,\n       TRIM(VersionName)  AS VersionName,\n       CONVERT(varchar(10), ForecastStartMonth, 23) AS ForecastStartMonth\nFROM dbo.sys_scenarios\nWHERE UPPER(TRIM(Status)) = 'ACTIVE'\n  AND UPPER(TRIM(VersionName)) = 'CURRENT FORECAST'",
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "dw_ovg_internal",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+                  "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": false
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Lookup Active Scenario",
+        "dependsOn": []
+      },
+      {
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@equals(activity('Lookup Active Scenario').output.count, 1)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "type": "SetVariable",
+              "typeProperties": {
+                "variableName": "Scenario",
+                "value": {
+                  "type": "Expression",
+                  "value": "@activity('Lookup Active Scenario').output.value[0].ScenarioName"
+                }
+              },
+              "policy": {
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Set Scenario",
+              "dependsOn": []
+            },
+            {
+              "type": "SetVariable",
+              "typeProperties": {
+                "variableName": "Version",
+                "value": {
+                  "type": "Expression",
+                  "value": "@activity('Lookup Active Scenario').output.value[0].VersionName"
+                }
+              },
+              "policy": {
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Set Version",
+              "dependsOn": []
+            },
+            {
+              "type": "SetVariable",
+              "typeProperties": {
+                "variableName": "ForecastStart",
+                "value": {
+                  "type": "Expression",
+                  "value": "@coalesce(activity('Lookup Active Scenario').output.value[0].ForecastStartMonth, '')"
+                }
+              },
+              "policy": {
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Set Forecast Start",
+              "dependsOn": []
+            }
+          ],
+          "ifFalseActivities": [
+            {
+              "type": "Fail",
+              "typeProperties": {
+                "message": {
+                  "type": "Expression",
+                  "value": "@concat('sys_scenarios must return exactly one Active / Current Forecast row; returned ', string(activity('Lookup Active Scenario').output.count), '. Nothing was cleared or loaded.')"
+                },
+                "errorCode": "SCENARIO_NOT_RESOLVED"
+              },
+              "name": "Fail Scenario Not Resolved",
+              "dependsOn": []
+            }
+          ]
+        },
+        "name": "If Exactly One Active Scenario",
+        "dependsOn": [
+          {
+            "activity": "Lookup Active Scenario",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@not(empty(variables('ForecastStart')))",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [],
+          "ifFalseActivities": [
+            {
+              "type": "Fail",
+              "typeProperties": {
+                "message": {
+                  "type": "Expression",
+                  "value": "@concat('ForecastStartMonth is NULL for ', variables('Scenario'), ' / ', variables('Version'), '. Nothing was cleared or loaded.')"
+                },
+                "errorCode": "FORECAST_START_MISSING"
+              },
+              "name": "Fail Forecast Start Missing",
+              "dependsOn": []
+            }
+          ]
+        },
+        "name": "If Forecast Start Present",
+        "dependsOn": [
+          {
+            "activity": "If Exactly One Active Scenario",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "RefreshDataflow",
+        "typeProperties": {
+          "dataflowId": "a1a62a3e-986f-9a4c-4928-fb5e83c001b4",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "notifyOption": "NoNotification",
+          "dataflowType": "DataflowFabric",
+          "parameters": {
+            "pRunId": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().RunId"
+              },
+              "type": "string"
+            },
+            "pSourceModel": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().parameters.SourceModel"
+              },
+              "type": "string"
+            }
+          }
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Read Workbook Validation",
+        "dependsOn": [
+          {
+            "activity": "If Forecast Start Present",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "type": "Expression",
+              "value": "SELECT COUNT(*) AS RowsForRun,\n       MAX(ErrorCount) AS ErrorCountText,\n       ISNULL(TRY_CAST(MAX(ErrorCount) AS int), -1) AS ErrorCountNum,\n       MAX(ControlTotal) AS ControlTotal,\n       CASE WHEN TRY_CAST(MAX(ControlTotal) AS decimal(18,4)) IS NULL THEN 0 ELSE 1 END AS ControlTotalIsNumber,\n       ISNULL(MAX(SourceId), '') AS SourceId,\n       ISNULL(MAX(ScenarioId), '') AS ScenarioId,\n       ISNULL(MAX(FileName), 'Operating Model workbook') AS FileName\nFROM dbo.stg_workbook_validation\nWHERE RunId = '@{pipeline().RunId}'\n  AND SourceModel = '@{pipeline().parameters.SourceModel}'"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "dw_ovg_internal",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+                  "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": true
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Lookup Validation Row",
+        "dependsOn": [
+          {
+            "activity": "Read Workbook Validation",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@and(equals(int(activity('Lookup Validation Row').output.firstRow.RowsForRun), 1), and(equals(int(activity('Lookup Validation Row').output.firstRow.ErrorCountNum), 0), and(equals(int(activity('Lookup Validation Row').output.firstRow.ControlTotalIsNumber), 1), and(equals(activity('Lookup Validation Row').output.firstRow.SourceId, pipeline().parameters.SourceModel), equals(activity('Lookup Validation Row').output.firstRow.ScenarioId, variables('Scenario'))))))",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "type": "SetVariable",
+              "typeProperties": {
+                "variableName": "ControlTotal",
+                "value": {
+                  "type": "Expression",
+                  "value": "@string(activity('Lookup Validation Row').output.firstRow.ControlTotal)"
+                }
+              },
+              "policy": {
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Set Control Total",
+              "dependsOn": []
+            }
+          ],
+          "ifFalseActivities": [
+            {
+              "type": "Fail",
+              "typeProperties": {
+                "message": {
+                  "type": "Expression",
+                  "value": "@concat('Workbook validation failed for ', activity('Lookup Validation Row').output.firstRow.FileName, ': ErrorCount=', coalesce(activity('Lookup Validation Row').output.firstRow.ErrorCountText, '<missing>'), ', SourceId=', activity('Lookup Validation Row').output.firstRow.SourceId, ' (expected ', pipeline().parameters.SourceModel, '), ScenarioId=', activity('Lookup Validation Row').output.firstRow.ScenarioId, ' (expected ', variables('Scenario'), '), rows for this run=', string(activity('Lookup Validation Row').output.firstRow.RowsForRun), '. Nothing was cleared or loaded.')"
+                },
+                "errorCode": "WORKBOOK_VALIDATION_FAILED"
+              },
+              "name": "Fail Workbook Validation",
+              "dependsOn": []
+            }
+          ]
+        },
+        "name": "If Workbook Valid",
+        "dependsOn": [
+          {
+            "activity": "Lookup Validation Row",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "SqlServerStoredProcedure",
+        "typeProperties": {
+          "storedProcedureName": "[dbo].[sp_clear_fcst_income_statement]",
+          "storedProcedureParameters": {
+            "RunId": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().RunId"
+              },
+              "type": "String"
+            },
+            "Scenario": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Scenario')"
+              },
+              "type": "String"
+            },
+            "Version": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Version')"
+              },
+              "type": "String"
+            },
+            "SourceModel": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().parameters.SourceModel"
+              },
+              "type": "String"
+            }
+          }
+        },
+        "linkedService": {
+          "name": "dw_ovg_internal",
+          "properties": {
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+              "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+              "workspaceId": "00000000-0000-0000-0000-000000000000"
+            },
+            "annotations": []
+          }
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Clear Staging Slice",
+        "dependsOn": [
+          {
+            "activity": "If Workbook Valid",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "RefreshDataflow",
+        "typeProperties": {
+          "dataflowId": "bfa9d33a-ef83-8ed0-406f-579c08d25825",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "notifyOption": "NoNotification",
+          "dataflowType": "DataflowFabric",
+          "parameters": {
+            "pScenario": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Scenario')"
+              },
+              "type": "string"
+            },
+            "pVersion": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Version')"
+              },
+              "type": "string"
+            },
+            "pSourceModel": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().parameters.SourceModel"
+              },
+              "type": "string"
+            },
+            "pForecastStart": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('ForecastStart')"
+              },
+              "type": "string"
+            }
+          }
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Load Operating Model",
+        "dependsOn": [
+          {
+            "activity": "Clear Staging Slice",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "SqlServerStoredProcedure",
+        "typeProperties": {
+          "storedProcedureName": "[dbo].[sp_add_customers_and_vendors]",
+          "storedProcedureParameters": {
+            "RunId": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().RunId"
+              },
+              "type": "String"
+            },
+            "Scenario": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Scenario')"
+              },
+              "type": "String"
+            },
+            "Version": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Version')"
+              },
+              "type": "String"
+            },
+            "SourceModel": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().parameters.SourceModel"
+              },
+              "type": "String"
+            }
+          }
+        },
+        "linkedService": {
+          "name": "dw_ovg_internal",
+          "properties": {
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+              "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+              "workspaceId": "00000000-0000-0000-0000-000000000000"
+            },
+            "annotations": []
+          }
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Conform Customers and Vendors",
+        "dependsOn": [
+          {
+            "activity": "Load Operating Model",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "SqlServerStoredProcedure",
+        "typeProperties": {
+          "storedProcedureName": "[dbo].[sp_publish_income_statement]",
+          "storedProcedureParameters": {
+            "RunId": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().RunId"
+              },
+              "type": "String"
+            },
+            "Scenario": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Scenario')"
+              },
+              "type": "String"
+            },
+            "Version": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('Version')"
+              },
+              "type": "String"
+            },
+            "SourceModel": {
+              "value": {
+                "type": "Expression",
+                "value": "@pipeline().parameters.SourceModel"
+              },
+              "type": "String"
+            },
+            "ControlTotal": {
+              "value": {
+                "type": "Expression",
+                "value": "@variables('ControlTotal')"
+              },
+              "type": "Decimal"
+            }
+          }
+        },
+        "linkedService": {
+          "name": "dw_ovg_internal",
+          "properties": {
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+              "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+              "workspaceId": "00000000-0000-0000-0000-000000000000"
+            },
+            "annotations": []
+          }
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Publish Income Statement",
+        "dependsOn": [
+          {
+            "activity": "Conform Customers and Vendors",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "type": "Expression",
+              "value": "SELECT\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_clear_fcst_income_statement' THEN RowsDeleted  END), 0) AS StagingRowsCleared,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_add_customers_and_vendors'   THEN RowsInserted END), 0) AS NewDimMembers,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_add_customers_and_vendors'   THEN RowsUpdated  END), 0) AS NamesConformed,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_add_customers_and_vendors'   THEN UnmappedRows END), 0) AS UnresolvedRows,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_add_customers_and_vendors'   THEN ErrorMessage END), 'None') AS UnresolvedSample,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_publish_income_statement'    THEN RowsDeleted  END), 0) AS RowsReplaced,\n  ISNULL(MAX(CASE WHEN ProcName = 'sp_publish_income_statement'    THEN RowsInserted END), 0) AS RowsPublished,\n  CONVERT(varchar(40), ISNULL(MAX(CASE WHEN ProcName = 'sp_publish_income_statement' THEN ExpectedAmount  END), 0)) AS WorkbookControlTotal,\n  CONVERT(varchar(40), ISNULL(MAX(CASE WHEN ProcName = 'sp_publish_income_statement' THEN PublishedAmount END), 0)) AS PublishedTotal\nFROM dbo.sys_publish_audit\nWHERE RunId = '@{pipeline().RunId}'"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "dw_ovg_internal",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+                  "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": true
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Lookup Run Summary",
+        "dependsOn": [
+          {
+            "activity": "Publish Income Statement",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Office365Email",
+        "typeProperties": {
+          "body": {
+            "type": "Expression",
+            "value": "<p><b>Result: SUCCEEDED.</b> The forecast is published to out_income_statement and is live in Power BI.@{if(greater(int(activity('Lookup Run Summary').output.firstRow.UnresolvedRows), 0), ' <b>Action needed: some customer or vendor names could not be resolved - see below.</b>', '')}</p>\n<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\">\n<tr><td>Slice (Scenario / Version / Source)</td><td>@{variables('Scenario')} / @{variables('Version')} / @{pipeline().parameters.SourceModel}</td></tr>\n<tr><td>Rows replaced in out_income_statement</td><td>@{activity('Lookup Run Summary').output.firstRow.RowsReplaced}</td></tr>\n<tr><td>Rows published</td><td>@{activity('Lookup Run Summary').output.firstRow.RowsPublished}</td></tr>\n<tr><td>Workbook ControlTotal</td><td>@{activity('Lookup Run Summary').output.firstRow.WorkbookControlTotal}</td></tr>\n<tr><td>Published total (before sign flip)</td><td>@{activity('Lookup Run Summary').output.firstRow.PublishedTotal}</td></tr>\n<tr><td>New customers / vendors added</td><td>@{activity('Lookup Run Summary').output.firstRow.NewDimMembers}</td></tr>\n<tr><td>Names conformed to existing spelling</td><td>@{activity('Lookup Run Summary').output.firstRow.NamesConformed}</td></tr>\n<tr><td>Unresolved customer / vendor rows</td><td>@{activity('Lookup Run Summary').output.firstRow.UnresolvedRows} - @{activity('Lookup Run Summary').output.firstRow.UnresolvedSample}</td></tr>\n</table>\n<p>Pipeline: dp_Sync Operating Model. Run ID: @{pipeline().RunId}<br/>Workspace: <a href=\"https://app.fabric.microsoft.com/groups/3d0a64fa-75cb-45d9-9a90-5222ad2ccf95/list?experience=fabric-developer\">OVG Training Workspace - SO</a> (Monitor hub, filter by run ID)</p>"
+          },
+          "to": "shane.oneill@openvalegroup.com",
+          "subject": {
+            "type": "Expression",
+            "value": "@{if(greater(int(activity('Lookup Run Summary').output.firstRow.UnresolvedRows), 0), '[SUCCEEDED - ACTION NEEDED]', '[SUCCEEDED]')} Operating Model forecast load - @{variables('Scenario')} / @{variables('Version')}"
+          }
+        },
+        "externalReferences": {
+          "connection": "8729f442-1534-49ed-a802-2ea8b187a198"
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Send Success Email",
+        "dependsOn": [
+          {
+            "activity": "Lookup Run Summary",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "type": "Expression",
+              "value": "SELECT COUNT(*) AS FailedProcs,\n       ISNULL(MAX(ProcName), 'none - stopped at a gate before any procedure ran') AS FailedProc,\n       ISNULL(CONVERT(varchar(20), MAX(ErrorNumber)), '-') AS ErrorNumber,\n       ISNULL(MAX(ErrorMessage), 'No procedure error was logged. The run stopped at the scenario check, the workbook validation gate, or a dataflow. Open the run in the Monitor hub for the exact message.') AS ErrorMessage\nFROM dbo.sys_publish_audit\nWHERE RunId = '@{pipeline().RunId}' AND Status = 'FAILED'"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "dw_ovg_internal",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "34ba7523-b692-a5cb-4272-911ff540adf4",
+                  "endpoint": "fmvctgbyuzfutjfd36oqzgsglq-7jsaupoloxmulguqkirk2lgpsu.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": true
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Lookup Failure Detail",
+        "dependsOn": [
+          {
+            "activity": "Publish Income Statement",
+            "dependencyConditions": [
+              "Failed",
+              "Skipped"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Office365Email",
+        "typeProperties": {
+          "body": {
+            "type": "Expression",
+            "value": "<p><b>Result: FAILED.</b> Nothing was published. out_income_statement is unchanged - Power BI still shows the previous forecast.</p>\n<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\">\n<tr><td>Slice (Scenario / Version / Source)</td><td>@{variables('Scenario')} / @{variables('Version')} / @{pipeline().parameters.SourceModel}</td></tr>\n<tr><td>Failed procedure</td><td>@{activity('Lookup Failure Detail').output.firstRow.FailedProc}</td></tr>\n<tr><td>Error number</td><td>@{activity('Lookup Failure Detail').output.firstRow.ErrorNumber}</td></tr>\n<tr><td>Error message</td><td>@{activity('Lookup Failure Detail').output.firstRow.ErrorMessage}</td></tr>\n</table>\n<p>What to do: fix the cause (for workbook problems: correct the Operating Model workbook, recalculate, save) and re-run dp_Sync Operating Model. A re-run replaces the slice cleanly.</p>\n<p>Pipeline: dp_Sync Operating Model. Run ID: @{pipeline().RunId}<br/>Workspace: <a href=\"https://app.fabric.microsoft.com/groups/3d0a64fa-75cb-45d9-9a90-5222ad2ccf95/list?experience=fabric-developer\">OVG Training Workspace - SO</a> (Monitor hub, filter by run ID)</p>"
+          },
+          "to": "shane.oneill@openvalegroup.com",
+          "subject": {
+            "type": "Expression",
+            "value": "[FAILED] Operating Model forecast load - @{if(empty(variables('Scenario')), 'scenario not resolved', concat(variables('Scenario'), ' / ', variables('Version')))}"
+          }
+        },
+        "externalReferences": {
+          "connection": "8729f442-1534-49ed-a802-2ea8b187a198"
+        },
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Send Failure Email",
+        "dependsOn": [
+          {
+            "activity": "Lookup Failure Detail",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Fail",
+        "typeProperties": {
+          "message": {
+            "type": "Expression",
+            "value": "@concat('Operating Model forecast load failed (run ', pipeline().RunId, '). Failure notification sent to shane.oneill@openvalegroup.com.')"
+          },
+          "errorCode": "RUN_FAILED_NOTIFIED"
+        },
+        "name": "Fail Run After Notification",
+        "dependsOn": [
+          {
+            "activity": "Send Failure Email",
+            "dependencyConditions": [
+              "Completed"
+            ]
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "SourceModel": {
+        "type": "string",
+        "defaultValue": "Operating Model"
+      }
+    },
+    "variables": {
+      "Scenario": {
+        "type": "String"
+      },
+      "Version": {
+        "type": "String"
+      },
+      "ForecastStart": {
+        "type": "String"
+      },
+      "ControlTotal": {
+        "type": "String"
+      }
+    }
+  }
+}

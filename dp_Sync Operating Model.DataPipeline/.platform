@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataPipeline",
+    "displayName": "dp_Sync Operating Model",
+    "description": "Forecast load pipeline (case study)"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "052b4a04-6779-afe5-45fc-79cb07a2ab2a"
+  }
+}
