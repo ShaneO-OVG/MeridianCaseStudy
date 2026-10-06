@@ -10,7 +10,7 @@
                     (audit: RowsInserted). Nulls ignored. Re-running inserts nothing.
       3. Surface  - anything still not an exact match afterwards (e.g. a name that matches two dimension
                     members differing only by case) is counted in UnmappedRows / UnmappedAmount, with a
-                    TOP 5 sample in ErrorMessage, for the notification step. It is never dropped.
+                    TOP 5 sample appended to ScopeSourceModels, for the notification step. It is never dropped.
 
     Gap vs case study: dim_customers / dim_vendors are name-only (no ID column), so there is no ID to assign.
     Audit: exactly one row per run, written before COMMIT; on failure roll back, log FAILED, re-throw.
@@ -110,14 +110,16 @@ BEGIN
                     ORDER BY Label
                 ) u;
 
+            -- The unresolved sample goes in the free-text scope column, not ErrorMessage, so that
+            -- "ErrorMessage IS NOT NULL" keeps meaning "this run failed".
             INSERT INTO dbo.sys_publish_audit
                 (RunId, ProcName, StartUtc, EndUtc, Status, Attempt,
                  RowsDeleted, RowsInserted, RowsUpdated, UnmappedRows, UnmappedAmount,
-                 ScopeSourceModels, ErrorMessage)
+                 ScopeSourceModels)
             VALUES
                 (@RunId, 'sp_add_customers_and_vendors', @StartUtc, SYSUTCDATETIME(), 'SUCCESS', 1,
                  0, @Inserted, @Updated, @UnmappedRows, @UnmappedAmount,
-                 @Scope, @Sample);
+                 LEFT(CONCAT(@Scope, CASE WHEN @Sample IS NOT NULL THEN CONCAT('; ', @Sample) END), 4000));
 
         COMMIT TRANSACTION;
     END TRY

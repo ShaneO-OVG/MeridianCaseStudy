@@ -61,10 +61,10 @@ shared #"Operating Model" = let
         else Final
 in
     Checked;
-shared pScenario = "2026.09_September Forecast" meta [IsParameterQuery = true, IsParameterQueryRequired = false, Type = type text, DefaultValue = ""];
-shared pVersion = "Current Forecast" meta [IsParameterQuery = true, IsParameterQueryRequired = false, Type = type text, DefaultValue = ""];
-shared pSourceModel = "Operating Model" meta [IsParameterQuery = true, IsParameterQueryRequired = false, Type = type text, DefaultValue = ""];
-shared pForecastStart = #date(2026, 9, 1) meta [IsParameterQuery = true, IsParameterQueryRequired = false, Type = type date, DefaultValue = null];
+shared pScenario = "2026.09_September Forecast" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type text];
+shared pVersion = "Current Forecast" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type text];
+shared pSourceModel = "Operating Model" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type text];
+shared pForecastStart = #date(2026, 9, 1) meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type date];
 shared #"Operating Model_DataDestination" = let
   Pattern = Fabric.Warehouse([CreateNavigationProperties = false, HierarchicalNavigation = true]),
   Navigation_1 = Pattern{[workspaceId = "3d0a64fa-75cb-45d9-9a90-5222ad2ccf95"]}[Data],
