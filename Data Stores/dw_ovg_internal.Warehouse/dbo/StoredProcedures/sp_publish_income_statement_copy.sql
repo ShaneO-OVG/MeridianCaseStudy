@@ -1,4 +1,4 @@
-/*  Step 5 - sp_publish_income_statement
+/*  Step 5 - sp_publish_income_statement_copy
     Moves ONE validated staged slice into out_income_statement in a single transaction (BR-9):
         delete slice -> enrich (L1-L5 from dim_is_accounts, SignFlip) -> insert -> audit -> clear staging -> COMMIT
 
@@ -25,7 +25,7 @@
     tie (pre-flip) is enforced by 50005 and recorded in ScopeSourceModels.
     Account names: L6 and L1-L5 labels all come from dim_is_accounts, so the hierarchy cannot disagree with itself.
 */
-CREATE   PROCEDURE dbo.sp_publish_income_statement
+CREATE   PROCEDURE dbo.sp_publish_income_statement_copy
     @RunId        VARCHAR(36),
     @Scenario     VARCHAR(300),
     @Version      VARCHAR(300),
@@ -51,11 +51,11 @@ BEGIN
         IF NULLIF(LTRIM(RTRIM(@Scenario)), '')    IS NULL
         OR NULLIF(LTRIM(RTRIM(@Version)), '')     IS NULL
         OR NULLIF(LTRIM(RTRIM(@SourceModel)), '') IS NULL
-            THROW 50001, 'sp_publish_income_statement: Scenario, Version and SourceModel are all required.', 1;
+            THROW 50001, 'sp_publish_income_statement_copy: Scenario, Version and SourceModel are all required.', 1;
         IF NULLIF(LTRIM(RTRIM(@RunId)), '') IS NULL
-            THROW 50002, 'sp_publish_income_statement: RunId is required.', 1;
+            THROW 50002, 'sp_publish_income_statement_copy: RunId is required.', 1;
         IF @ControlTotal IS NULL
-            THROW 50003, 'sp_publish_income_statement: ControlTotal is required (from the workbook Validation row).', 1;
+            THROW 50003, 'sp_publish_income_statement_copy: ControlTotal is required (from the workbook Validation row).', 1;
 
         SELECT @StagedRows = COUNT(*), @StagedAmount = ISNULL(SUM(Amount), 0)
         FROM dbo.fcst_income_statement
@@ -63,7 +63,7 @@ BEGIN
 
         IF @StagedRows = 0
         BEGIN
-            SET @Msg = CONCAT('sp_publish_income_statement: nothing staged for ', @Scope, '. Refusing to publish an empty slice.');
+            SET @Msg = CONCAT('sp_publish_income_statement_copy: nothing staged for ', @Scope, '. Refusing to publish an empty slice.');
             THROW 50004, @Msg, 1;
         END;
 
@@ -75,14 +75,14 @@ BEGIN
 
         IF @NullRows > 0
         BEGIN
-            SET @Msg = CONCAT('sp_publish_income_statement: ', @NullRows, ' staged rows have a NULL Amount or Date for ', @Scope, '.');
+            SET @Msg = CONCAT('sp_publish_income_statement_copy: ', @NullRows, ' staged rows have a NULL Amount or Date for ', @Scope, '.');
             THROW 50009, @Msg, 1;
         END;
 
         -- Excel-to-Fabric tie-out, before the transaction opens
         IF @StagedAmount <> @ControlTotal
         BEGIN
-            SET @Msg = CONCAT('sp_publish_income_statement: control total mismatch. Staged ', @StagedAmount,
+            SET @Msg = CONCAT('sp_publish_income_statement_copy: control total mismatch. Staged ', @StagedAmount,
                               ' vs workbook ControlTotal ', @ControlTotal, ' (difference ', @StagedAmount - @ControlTotal,
                               '). Recalculate and save the workbook, then re-run.');
             THROW 50005, @Msg, 1;
@@ -96,7 +96,7 @@ BEGIN
 
         IF @BadAccounts > 0
         BEGIN
-            SELECT @Msg = LEFT(CONCAT('sp_publish_income_statement: ', @BadAccounts, ' staged rows (', @BadAmount,
+            SELECT @Msg = LEFT(CONCAT('sp_publish_income_statement_copy: ', @BadAccounts, ' staged rows (', @BadAmount,
                               ') have an AccountL6ID not in dim_is_accounts. Top 5: ', STRING_AGG(x.AccountL6ID, ', ')), 4000)
             FROM (SELECT DISTINCT TOP 5 s.AccountL6ID
                   FROM dbo.fcst_income_statement s
@@ -114,7 +114,7 @@ BEGIN
 
         IF @DupAccounts > 0
         BEGIN
-            SET @Msg = CONCAT('sp_publish_income_statement: ', @DupAccounts, ' AccountL6ID values are duplicated in dim_is_accounts; the join would multiply rows.');
+            SET @Msg = CONCAT('sp_publish_income_statement_copy: ', @DupAccounts, ' AccountL6ID values are duplicated in dim_is_accounts; the join would multiply rows.');
             THROW 50007, @Msg, 1;
         END;
 
@@ -127,7 +127,7 @@ BEGIN
 
         IF @BadSigns > 0
         BEGIN
-            SET @Msg = CONCAT('sp_publish_income_statement: ', @BadSigns, ' accounts in the slice have a SignFlip that is NULL or not -1/1 in dim_is_accounts.');
+            SET @Msg = CONCAT('sp_publish_income_statement_copy: ', @BadSigns, ' accounts in the slice have a SignFlip that is NULL or not -1/1 in dim_is_accounts.');
             THROW 50010, @Msg, 1;
         END;
 
@@ -171,7 +171,7 @@ BEGIN
 
             IF @PublishedRows <> @StagedRows OR @PublishedAmount <> @ExpectedLedgerAmount
             BEGIN
-                SET @Msg = CONCAT('sp_publish_income_statement: reconciliation failed. Rows staged ', @StagedRows, ', published ', @PublishedRows,
+                SET @Msg = CONCAT('sp_publish_income_statement_copy: reconciliation failed. Rows staged ', @StagedRows, ', published ', @PublishedRows,
                                   '; expected ledger amount ', @ExpectedLedgerAmount, ', published ', @PublishedAmount, '.');
                 THROW 50008, @Msg, 1;
             END;
@@ -182,7 +182,7 @@ BEGIN
                  RowsDeleted, RowsInserted, ExpectedRows, PublishedRows,
                  ExpectedAmount, PublishedAmount, ReconMismatches, ScopeSourceModels)
             VALUES
-                (@RunId, 'sp_publish_income_statement', @StartUtc, SYSUTCDATETIME(), 'SUCCESS', 1,
+                (@RunId, 'sp_publish_income_statement_copy', @StartUtc, SYSUTCDATETIME(), 'SUCCESS', 1,
                  @RowsDeleted, @RowsInserted, @StagedRows, @PublishedRows,
                  @ExpectedLedgerAmount, @PublishedAmount, 0, @Scope);
 
@@ -201,7 +201,7 @@ BEGIN
              ExpectedAmount, PublishedAmount, UnmappedRows, UnmappedAmount,
              ScopeSourceModels, ErrorNumber, ErrorMessage)
         VALUES
-            (@RunId, 'sp_publish_income_statement', @StartUtc, SYSUTCDATETIME(), 'FAILED', 1,
+            (@RunId, 'sp_publish_income_statement_copy', @StartUtc, SYSUTCDATETIME(), 'FAILED', 1,
              @RowsDeleted, @RowsInserted, @StagedRows, @PublishedRows,
              @ExpectedLedgerAmount, @PublishedAmount, @BadAccounts, @BadAmount,
              @Scope, ERROR_NUMBER(), LEFT(ERROR_MESSAGE(), 4000));
